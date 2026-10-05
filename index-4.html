@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jogo do Dino</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    canvas { background: #a0e0ff; display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <audio id="collectSound" src="assets/collect.mp3"></audio>
+  <audio id="hitSound" src="assets/hit.mp3"></audio>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const groundY = canvas.height - 60;
+
+    const dino = {
+      x: canvas.width / 2 - 106,
+      y: groundY - 146.5,
+      width: 106.5,
+      height: 146.5,
+      speed: 5,
+      mouthOpen: false,
+      facingLeft: false
+    };
+
+    let fruits = [];
+    let meteors = [];
+    let score = 0;
+    let lives = 3;
+    let gameTicks = 0;
+
+    const keys = {};
+    document.addEventListener("keydown", (e) => keys[e.key] = true);
+    document.addEventListener("keyup", (e) => keys[e.key] = false);
+
+    const dinoNormal = new Image();
+    dinoNormal.src = "assets/dino_normal.png";
+    const dinoOpen = new Image();
+    dinoOpen.src = "assets/dino_open.png";
+    const fruitImg = new Image();
+    fruitImg.src = "assets/fruit.png";
+    const meteorImg = new Image();
+    meteorImg.src = "assets/meteor.png";
+
+    const collectSound = document.getElementById("collectSound");
+    const hitSound = document.getElementById("hitSound");
+
+    const bgm = new Audio("assets/background.mp3");
+    bgm.loop = true;
+    bgm.volume = 0.5;
+    window.addEventListener("click", () => bgm.play());
+
+    function drawGround() {
+      ctx.fillStyle = "#006600";
+      ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+    }
+
+    function drawDino() {
+      const image = dino.mouthOpen ? dinoOpen : dinoNormal;
+      ctx.save();
+      if (dino.facingLeft) {
+        ctx.translate(dino.x + dino.width / 2, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(image, -dino.width / 2, dino.y, dino.width, dino.height);
+      } else {
+        ctx.drawImage(image, dino.x, dino.y, dino.width, dino.height);
+      }
+      ctx.restore();
+    }
+
+    function drawFruits() {
+      fruits.forEach(fruit => {
+        ctx.drawImage(fruitImg, fruit.x - 23, fruit.y - 26.5, 46, 53);
+      });
+    }
+
+    function drawMeteors() {
+      meteors.forEach(meteor => {
+        ctx.drawImage(meteorImg, meteor.x - 37.5, meteor.y - 43.75, 75, 87.5);
+      });
+    }
+
+    function moveDino() {
+      if (keys["ArrowLeft"] && dino.x > 0) {
+        dino.x -= dino.speed;
+        dino.facingLeft = true;
+      }
+      if (keys["ArrowRight"] && dino.x + dino.width < canvas.width) {
+        dino.x += dino.speed;
+        dino.facingLeft = false;
+      }
+    }
+
+    function spawnItems() {
+      const fruitChance = 0.02 + Math.min(gameTicks / 10000, 0.03);
+      const maxFruits = 5 + Math.floor(score / 20);
+      const maxMeteors = 1 + Math.floor(score / 50);
+
+      if (fruits.length < maxFruits && Math.random() < fruitChance) {
+        fruits.push({ x: Math.random() * (canvas.width - 46) + 23, y: 0 });
+      }
+
+      if (meteors.length < maxMeteors) {
+        meteors.push({ x: Math.random() * (canvas.width - 75) + 37.5, y: 0 });
+      }
+    }
+
+    function updateItems() {
+      const fruitSpeed = 2 + Math.min(gameTicks / 1000, 5);
+      const meteorSpeed = 3 + Math.min(gameTicks / 1000, 6);
+
+      fruits.forEach(fruit => fruit.y += fruitSpeed);
+      meteors.forEach(meteor => meteor.y += meteorSpeed);
+
+      fruits = fruits.filter(fruit => fruit.y < canvas.height);
+      meteors = meteors.filter(meteor => meteor.y < canvas.height);
+    }
+
+    function checkCollisions() {
+      let near = false;
+      fruits = fruits.filter(fruit => {
+        const collision = fruit.x > dino.x && fruit.x < dino.x + dino.width &&
+                          fruit.y > dino.y && fruit.y < dino.y + dino.height;
+        const close = Math.abs(fruit.x - dino.x) < 75 && Math.abs(fruit.y - dino.y) < 75;
+        if (collision) {
+          score++;
+          collectSound.currentTime = 0;
+          collectSound.play();
+          return false;
+        }
+        if (close) near = true;
+        return true;
+      });
+
+      meteors = meteors.filter(meteor => {
+        const collision = meteor.x > dino.x && meteor.x < dino.x + dino.width &&
+                          meteor.y > dino.y && meteor.y < dino.y + dino.height;
+        const close = Math.abs(meteor.x - dino.x) < 75 && Math.abs(meteor.y - dino.y) < 75;
+        if (collision) {
+          lives--;
+          hitSound.currentTime = 0;
+          hitSound.play();
+          return false;
+        }
+        if (close) near = true;
+        return true;
+      });
+
+      dino.mouthOpen = near;
+    }
+
+    function drawUI() {
+      ctx.fillStyle = "#000";
+      ctx.font = "16px Arial";
+      ctx.fillText("Pontos: " + score, 10, 20);
+      ctx.fillText("Vidas: " + lives, 10, 40);
+    }
+
+    function gameLoop() {
+      gameTicks++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGround();
+      moveDino();
+      spawnItems();
+      updateItems();
+      checkCollisions();
+      drawDino();
+      drawFruits();
+      drawMeteors();
+      drawUI();
+
+      if (lives > 0) requestAnimationFrame(gameLoop);
+      else alert("Game Over! Pontos: " + score);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
